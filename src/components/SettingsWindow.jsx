@@ -131,7 +131,6 @@ export default class SettingsWindow extends PureComponent {
             checkForUpdates: false,
             adjustmentTimeIndividualDisplays: false,
             languages: [],
-            analytics: false,
             useAcrylic: true,
             scrollShortcut: true,
             updateProgress: 0,
@@ -336,7 +335,17 @@ export default class SettingsWindow extends PureComponent {
         }
     }
 
+    hasDDCCIFeatureSupport = () => {
+        const monitors = Object.values(this.state.monitors || {})
+        if (!monitors.length) return true
+        return monitors.some(monitor => monitor.ddcciSupported && Object.keys(monitor.features || {}).length > 0)
+    }
+
+    isPausedAfterMonitorChange = () => this.state.rawSettings.disableOnMonitorChange && this.state.rawSettings.twinkleTrayDisabledDueToMonitorChange
+
     getSidebar = () => {
+        const hasDDCCIFeatureSupport = this.hasDDCCIFeatureSupport()
+        const isPausedAfterChange = this.isPausedAfterMonitorChange()
         const items = [
             {
                 id: "general",
@@ -346,37 +355,65 @@ export default class SettingsWindow extends PureComponent {
             {
                 id: "monitors",
                 label: T.t("SETTINGS_SIDEBAR_MONITORS"),
-                icon: "&#xE7F4;"
+                icon: "&#xE7F4;",
+                disabled: isPausedAfterChange,
+                tooltip: "Refresh after the display change to re-enable this tab."
             },
             {
                 id: "features",
                 label: T.t("SETTINGS_SIDEBAR_FEATURES"),
-                icon: "&#xE9E9;"
+                icon: "&#xE9E9;",
+                disabled: isPausedAfterChange || !hasDDCCIFeatureSupport,
+                tooltip: (isPausedAfterChange ? "Refresh after the display change to re-enable this tab." : "No display supports DDC/CI features.")
+            },
+            {
+                id: "dimming",
+                label: "Dimming",
+                icon: "&#xE706;",
+                disabled: isPausedAfterChange,
+                tooltip: "Refresh after the display change to re-enable this tab."
             },
             {
                 id: "time",
                 label: T.t("SETTINGS_SIDEBAR_TIME"),
-                icon: "&#xE823;"
+                icon: "&#xE823;",
+                disabled: isPausedAfterChange,
+                tooltip: "Refresh after the display change to re-enable this tab."
             },
             {
                 id: "hotkeys",
                 label: T.t("SETTINGS_SIDEBAR_HOTKEYS"),
-                icon: "&#xF210;"
+                icon: "&#xF210;",
+                disabled: isPausedAfterChange,
+                tooltip: "Refresh after the display change to re-enable this tab."
             },
             {
                 id: "updates",
                 label: T.t("SETTINGS_SIDEBAR_UPDATES"),
-                icon: "&#xE895;"
+                icon: "&#xE895;",
+                disabled: isPausedAfterChange,
+                tooltip: "Refresh after the display change to re-enable this tab."
             },
             {
                 id: "debug",
                 label: "Debug",
                 icon: "&#xEBE8;",
-                type: "debug"
+                type: "debug",
+                disabled: isPausedAfterChange,
+                tooltip: "Refresh after the display change to re-enable this tab."
             }
         ]
         return items.map((item, index) => {
-            return (<div key={item.id} className="item" data-active={this.isSection(item.id)} data-type={item.type || "none"} onClick={() => { this.setState({ activePage: item.id }); window.currentSettingsPage = item.id; this.scrollToTop(); window.reloadReactMonitors(); window.requestMonitors(); }}>
+            const disabled = item.disabled === true
+            return (<div key={item.id} className="item" data-active={this.isSection(item.id)} data-disabled={disabled ? "true" : undefined} data-type={item.type || "none"} title={disabled ? item.tooltip : ""} onClick={() => {
+                if (disabled) return false
+                window.currentSettingsPage = item.id
+                this.setState({ activePage: item.id }, () => {
+                    this.scrollToTop()
+                    window.reloadReactMonitors()
+                    window.requestMonitors()
+                })
+            }}>
                 <div className="icon" dangerouslySetInnerHTML={{ __html: (item.icon || "&#xE770;") }}></div><div className="label">{item.label || `Item ${index}`}</div>
             </div>)
         })
@@ -435,12 +472,26 @@ export default class SettingsWindow extends PureComponent {
         }
     }
 
+    getMonitorChangeNotice = () => {
+        if (!this.isPausedAfterMonitorChange()) return null
+        return (
+            <div className="settings-notice change-detected">
+                <div className="icon">&#xE7BA;</div>
+                <div className="content-area">
+                    <div className="option-title">Change detected</div>
+                    <div className="option-description">A display configuration change was detected, so Twinkle Tray has been paused. Refresh when your monitor setup is stable to re-enable controls.</div>
+                </div>
+                <a className="button button-primary" onClick={() => window.requestMonitors(true)}>Refresh</a>
+            </div>
+        )
+    }
+
     getMinMaxMonitors = () => {
         if (this.state.monitors == undefined || Object.keys(this.state.monitors).length == 0) {
             return (<div className="no-displays-message">{T.t("GENERIC_NO_COMPATIBLE_DISPLAYS")}<br /><br /></div>)
         } else {
             return Object.values(this.state.monitors).map((monitor, index) => {
-                if (monitor.type == "none") {
+                if (monitor.type == "none" && !this.canUseDimming(monitor)) {
                     return (<div key={monitor.name}></div>)
                 } else {
                     // New method, by ID
@@ -547,7 +598,7 @@ export default class SettingsWindow extends PureComponent {
             return (<SettingsChild content={<div className="no-displays-message">{T.t("GENERIC_NO_COMPATIBLE_DISPLAYS")}<br /><br /></div>} />)
         } else {
             return Object.values(this.state.monitors).map((monitor, index) => {
-                if (monitor.type == "none") {
+                if (monitor.type == "none" && !this.canUseDimming(monitor)) {
                     return null
                 } else {
                     return (
@@ -575,7 +626,7 @@ export default class SettingsWindow extends PureComponent {
                                 ref={provided.innerRef}
                             >
                                 {sorted.map((monitor, index) => {
-                                    if (monitor.type == "none") {
+                                    if (monitor.type == "none" && !this.canUseDimming(monitor)) {
                                         return (<div key={monitor.id}></div>)
                                     } else {
                                         return (
@@ -810,6 +861,7 @@ export default class SettingsWindow extends PureComponent {
 
                 let brightness = monitor.brightness
                 let brightnessMax = monitor.brightnessMax
+                const isDimmable = this.canUseDimming(monitor)
 
                 if (monitor.type == "ddcci" && !monitor.brightnessType) {
                     brightness = "???"
@@ -822,10 +874,10 @@ export default class SettingsWindow extends PureComponent {
                         <div className="sectionSubtitle"><div className="icon">&#xE7F4;</div><div>{monitor.name}</div></div>
                         <p>{T.t("SETTINGS_MONITORS_DETAILS_NAME")}: <b>{getMonitorName(monitor, this.state.names)}</b>
                             <br />{T.t("SETTINGS_MONITORS_DETAILS_INTERNAL_NAME")}: <b>{monitor.hwid[1]}</b>
-                            <br />{T.t("SETTINGS_MONITORS_DETAILS_COMMUNICATION")}: {this.getDebugMonitorType((monitor.type === "ddcci" && monitor.highLevelSupported?.brightness ? "ddcci-hl" : monitor.type))}
-                            <br />{T.t("SETTINGS_MONITORS_DETAILS_BRIGHTNESS")}: <b>{(monitor.type == "none" ? T.t("GENERIC_NOT_SUPPORTED") : brightness)}</b>
-                            <br />{T.t("SETTINGS_MONITORS_DETAILS_MAX_BRIGHTNESS")}: <b>{(monitor.type !== "ddcci" ? T.t("GENERIC_NOT_SUPPORTED") : brightnessMax)}</b>
-                            <br />{T.t("SETTINGS_MONITORS_DETAILS_BRIGHTNESS_NORMALIZATION")}: <b>{(monitor.type == "none" ? T.t("GENERIC_NOT_SUPPORTED") : monitor.min + " - " + monitor.max)}</b>
+                            <br />{T.t("SETTINGS_MONITORS_DETAILS_COMMUNICATION")}: {this.getDebugMonitorType((isDimmable ? "dimming" : monitor.type === "ddcci" && monitor.highLevelSupported?.brightness ? "ddcci-hl" : monitor.type))}
+                            <br />{T.t("SETTINGS_MONITORS_DETAILS_BRIGHTNESS")}: <b>{(monitor.type == "none" && !isDimmable ? T.t("GENERIC_NOT_SUPPORTED") : brightness)}</b>
+                            <br />{T.t("SETTINGS_MONITORS_DETAILS_MAX_BRIGHTNESS")}: <b>{(isDimmable ? 100 : monitor.type !== "ddcci" ? T.t("GENERIC_NOT_SUPPORTED") : brightnessMax)}</b>
+                            <br />{T.t("SETTINGS_MONITORS_DETAILS_BRIGHTNESS_NORMALIZATION")}: <b>{(monitor.type == "none" && !isDimmable ? T.t("GENERIC_NOT_SUPPORTED") : monitor.min + " - " + monitor.max)}</b>
                             <br />{T.t("SETTINGS_MONITORS_DETAILS_HDR")}: <b>{(monitor.hdr == "active" ? T.t("GENERIC_ACTIVE") : monitor.hdr == "supported" ? T.t("GENERIC_SUPPORTED") : T.t("GENERIC_UNSUPPORTED"))}</b>
                         </p>
                     </div>
@@ -847,6 +899,47 @@ export default class SettingsWindow extends PureComponent {
 
             })
         }
+    }
+
+    getUnsupportedBrightnessMonitors = () => {
+        return Object.values(this.state.monitors || {}).filter(monitor => monitor?.type == "none" && monitor?.bounds && !this.canUseDimming(monitor))
+    }
+
+    enableDimmingForUnsupportedMonitors = () => {
+        const dimmingDisplays = { ...(this.state.rawSettings.dimmingDisplays || {}) }
+        this.getUnsupportedBrightnessMonitors().forEach(monitor => {
+            dimmingDisplays[monitor.key] = true
+        })
+        const newSettings = {
+            enableDimming: true,
+            dimmingDisplays
+        }
+        this.setState({
+            ...newSettings,
+            rawSettings: { ...this.state.rawSettings, ...newSettings }
+        })
+        window.sendSettings(newSettings)
+    }
+
+    getUnsupportedBrightnessNotice = () => {
+        const monitors = this.getUnsupportedBrightnessMonitors()
+        if (!monitors.length) return null
+
+        const displayNames = monitors.map(monitor => getMonitorName(monitor, this.state.names)).join(", ")
+        const copy = monitors.length === 1
+            ? `${displayNames} does not support actual brightness controls. Turn on dimming to control it with a click-through overlay.`
+            : `${displayNames} do not support actual brightness controls. Turn on dimming to control them with click-through overlays.`
+
+        return (
+            <div className="settings-notice">
+                <div className="icon">&#xE7BA;</div>
+                <div className="content-area">
+                    <div className="option-title">Dimming available</div>
+                    <div className="option-description">{copy}</div>
+                </div>
+                <a className="button" onClick={this.enableDimmingForUnsupportedMonitors}>Enable dimming</a>
+            </div>
+        )
     }
 
     getFeaturesMonitors = () => {
@@ -979,6 +1072,8 @@ export default class SettingsWindow extends PureComponent {
     getDebugMonitorType = (type) => {
         if (type == "none") {
             return (<><b>None</b> <span className="icon red vfix">&#xEB90;</span></>)
+        } else if (type == "dimming") {
+            return (<><b>Dimming overlay</b> <span className="icon green vfix">&#xE73D;</span></>)
         } else if (type == "ddcci") {
             return (<><b>DDC/CI</b> <span className="icon green vfix">&#xE73D;</span></>)
         } else if (type == "ddcci-hl") {
@@ -1036,11 +1131,17 @@ export default class SettingsWindow extends PureComponent {
         this.lastLevels = []
         let numMonitors = 0
         for (let key in newMonitors) {
-            if (newMonitors[key].type != "none") numMonitors++;
+            if (newMonitors[key].type != "none" || this.canUseDimming(newMonitors[key])) numMonitors++;
         }
         this.numMonitors = numMonitors
+        const hasDDCCIFeatureSupport = Object.values(newMonitors || {}).some(monitor => monitor.ddcciSupported && Object.keys(monitor.features || {}).length > 0)
+        const shouldRedirectFeaturesPage = !hasDDCCIFeatureSupport && window.currentSettingsPage == "features"
+        const shouldRedirectPausedPage = this.isPausedAfterMonitorChange() && window.currentSettingsPage != "general"
+        if (shouldRedirectFeaturesPage) window.currentSettingsPage = "monitors"
+        if (shouldRedirectPausedPage) window.currentSettingsPage = "general"
         this.setState({
-            monitors: newMonitors
+            monitors: newMonitors,
+            activePage: (shouldRedirectPausedPage ? "general" : shouldRedirectFeaturesPage ? "monitors" : this.state.activePage)
         })
     }
 
@@ -1062,11 +1163,14 @@ export default class SettingsWindow extends PureComponent {
         const language = (settings.language || "system")
         const hotkeys = (settings.hotkeys || [])
         const hotkeyPercent = (settings.hotkeyPercent || 10)
-        const analytics = settings.analytics
         const useAcrylic = settings.useAcrylic
         const scrollShortcut = settings.scrollShortcut
+        const isPausedAfterChange = settings.disableOnMonitorChange && settings.twinkleTrayDisabledDueToMonitorChange
+        const activePage = (isPausedAfterChange && this.state.activePage != "general" ? "general" : this.state.activePage)
+        if (isPausedAfterChange) window.currentSettingsPage = "general"
         this.setState({
             rawSettings: (Object.keys(settings).length > 0 ? settings : this.state.rawSettings),
+            activePage,
             openAtLogin,
             brightnessAtStartup,
             linkedLevelsActive,
@@ -1082,7 +1186,6 @@ export default class SettingsWindow extends PureComponent {
             language,
             hotkeys,
             hotkeyPercent,
-            analytics,
             useAcrylic,
             scrollShortcut
         }, () => {
@@ -1097,6 +1200,56 @@ export default class SettingsWindow extends PureComponent {
         } else {
             return false
         }
+    }
+
+    canUseDimming = (monitor) => {
+        if (!this.state.rawSettings.enableDimming || !monitor?.bounds) return false
+        const dimmingSetting = this.state.rawSettings.dimmingDisplays?.[monitor.key]
+        if (dimmingSetting === true) return true
+        if (dimmingSetting === false) return false
+        return monitor?.type == "none"
+    }
+
+    setDimmingMonitor = (monitor, value) => {
+        const dimmingDisplays = { ...(this.state.rawSettings.dimmingDisplays || {}) }
+        dimmingDisplays[monitor.key] = value
+        this.setSetting("dimmingDisplays", dimmingDisplays)
+    }
+
+    setAllDimmingMonitors = (value) => {
+        const dimmingDisplays = {}
+        Object.values(this.state.monitors || {}).forEach(monitor => {
+            if (monitor?.bounds) dimmingDisplays[monitor.key] = value
+        })
+        this.setSetting("dimmingDisplays", dimmingDisplays)
+    }
+
+    getDimmingModeDescription = (monitor) => {
+        if (!monitor?.bounds) return "Dimming is unavailable because this display has no desktop bounds."
+        if (!this.state.rawSettings.enableDimming && this.state.rawSettings.dimmingDisplays?.[monitor.key] === true) return "Dimming overlay will be used when dimming is turned on. Native DDC/WMI brightness will be bypassed."
+        if (!this.state.rawSettings.enableDimming && monitor.type == "none" && this.state.rawSettings.dimmingDisplays?.[monitor.key] !== false) return "Will be enabled automatically when dimming is turned on because native brightness control is unavailable."
+        if (!this.state.rawSettings.enableDimming) return "Turn on dimming to use the overlay for this display."
+        if (this.state.rawSettings.dimmingDisplays?.[monitor.key] === true) return "Dimming overlay is enabled. Native DDC/WMI brightness is bypassed."
+        if (this.state.rawSettings.dimmingDisplays?.[monitor.key] === false) return "Dimming overlay is disabled for this display."
+        if (monitor.type == "none") return "Enabled automatically because native brightness control is unavailable."
+        return "Uses native brightness control unless dimming is enabled here."
+    }
+
+    getDimmingMonitors = () => {
+        if (this.state.monitors == undefined || Object.keys(this.state.monitors).length == 0) {
+            return (<SettingsChild content={<div className="no-displays-message">{T.t("GENERIC_NO_COMPATIBLE_DISPLAYS")}<br /><br /></div>} />)
+        }
+        return Object.values(this.state.monitors).sort(monitorSort).map(monitor => {
+            const isDimmable = this.canUseDimming(monitor)
+            const canToggle = this.state.rawSettings.enableDimming && monitor?.bounds
+            return (
+                <SettingsChild key={monitor.key} icon="E7F4" title={getMonitorName(monitor, this.state.names)} description={this.getDimmingModeDescription(monitor)} input={
+                    <div className="inputToggle-generic">
+                        <input onChange={(e) => { this.setDimmingMonitor(monitor, e.target.checked) }} checked={isDimmable} data-checked={isDimmable} disabled={!canToggle} type="checkbox" />
+                    </div>
+                } />
+            )
+        })
     }
 
     isIcon = (icon) => (this.state.rawSettings.icon === icon ? true : false)
@@ -1151,6 +1304,7 @@ export default class SettingsWindow extends PureComponent {
                         <div id="page" ref={this.settingsPageRef}>
 
                             <SettingsPage current={this.state.activePage} id="general">
+                                {this.getMonitorChangeNotice()}
                                 <div className="pageSection">
 
                                     <div className="sectionTitle">{T.t("SETTINGS_GENERAL_TITLE")}</div>
@@ -1208,8 +1362,6 @@ export default class SettingsWindow extends PureComponent {
                                             </div>
                                         </div>
                                     )} />
-
-                                    <SettingsOption title={T.t("SETTINGS_GENERAL_ANALYTICS_TITLE")} description={T.h("SETTINGS_GENERAL_ANALYTICS_DESC", '<a href="javascript:window.openURL(\'privacy-policy\')">' + T.t("SETTINGS_GENERAL_ANALYTICS_LINK") + '</a>')} input={this.renderToggle("analytics")} />
 
                                 </div>
 
@@ -1334,9 +1486,11 @@ export default class SettingsWindow extends PureComponent {
                                     <div className="monitorItem-list">
                                         {this.getInfoMonitors()}
                                     </div>
+                                    {this.getUnsupportedBrightnessNotice()}
                                 </div>
 
                                 <div className="pageSection">
+                                    <SettingsOption title="Pause Twinkle Tray on monitor changes" description="When Windows reports a display add, remove, resolution change, or similar configuration change, immediately pause Twinkle Tray until you refresh." input={this.renderToggle("disableOnMonitorChange")} />
                                     <SettingsOption title={T.t("SETTINGS_MONITORS_RATE_TITLE")} description={T.t("SETTINGS_MONITORS_RATE_DESC")} input={(
                                         <select value={this.state.updateInterval} onChange={this.updateIntervalChanged}>
                                             <option value="100">{T.t("SETTINGS_MONITORS_RATE_0")}</option>
@@ -1396,6 +1550,25 @@ export default class SettingsWindow extends PureComponent {
                                     }>
                                         <SettingsChild description={<>⚠️ <em>{T.t("SETTINGS_FEATURES_POWER_WARNING")}</em></>} />
                                     </SettingsOption>                                
+                                </div>
+                            </SettingsPage>
+
+
+
+                            <SettingsPage current={this.state.activePage} id="dimming">
+                                <div className="pageSection">
+                                    <div className="sectionTitle">Dimming</div>
+                                    <SettingsOption title="Enable dimming" input={this.renderToggle("enableDimming")} />
+                                    <SettingsOption title="Ignore workspace borders" description="Limit the dimming overlay to the usable desktop workspace so reserved areas like the taskbar remain uncovered and clickable." input={this.renderToggle("ignoreWorkspaceBorders")} />
+                                    <SettingsOption title="Screenshot detection" description="Requires ShareX. When enabled, double-clicking the tray icon temporarily hides dimming overlays, runs ShareX's default screenshot action, waits briefly for the capture, then restores dimming." input={this.renderToggle("dimmingScreenshotDetection")} />
+                                    <SettingsOption title="Displays" description="Choose which displays use the click-through dimming overlay instead of native DDC/WMI brightness control." expandable={true} startExpanded={true} input={
+                                        <div className="input-row">
+                                            <a className="button" onClick={() => this.setAllDimmingMonitors(true)}>Enable all</a>
+                                            <a className="button" onClick={() => this.setAllDimmingMonitors(false)}>Disable all</a>
+                                        </div>
+                                    }>
+                                        {this.getDimmingMonitors()}
+                                    </SettingsOption>
                                 </div>
                             </SettingsPage>
 

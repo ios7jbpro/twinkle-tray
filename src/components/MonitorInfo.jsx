@@ -4,6 +4,7 @@ import TranslateReact from "../TranslateReact"
 
 export default function MonitorInfo(props) {
     const { monitor, name } = props
+    const isDimmable = canUseDimming(monitor)
     const [brightness, setBrightness] = useState(monitor?.features?.["0x10"] ? monitor?.features?.["0x10"][0] : 50)
     const [contrast, setContrast] = useState(monitor?.features?.["0x12"] ? monitor?.features?.["0x12"][0] : 50)
     const [volume, setVolume] = useState(monitor?.features?.["0x62"] ? monitor?.features?.["0x62"][0] : 50)
@@ -24,7 +25,7 @@ export default function MonitorInfo(props) {
     if (props.debug === true) {
         extraHTML.push(
             <div key="debug">
-                <br />Raw Brightness: <b>{(monitor.type == "none" ? "Not supported" : monitor.brightnessRaw)}</b>
+                <br />Raw Brightness: <b>{(monitor.type == "none" && !isDimmable ? "Not supported" : monitor.brightnessRaw)}</b>
                 <br />Features: <b>{(monitor.type == "ddcci" && monitor.features ? JSON.stringify(monitor.features) : "Unsupported")}</b>
                 <br />Order: <b>{(monitor.order ? monitor.order : "0")}</b>
                 <br />Key: <b>{monitor.key}</b>
@@ -98,10 +99,10 @@ export default function MonitorInfo(props) {
             <div className="sectionSubtitle"><div className="icon">&#xE7F4;</div><div>{monitor.name}</div></div>
             <p>{T.t("SETTINGS_MONITORS_DETAILS_NAME")}: <b>{name}</b>
                 <br />{T.t("SETTINGS_MONITORS_DETAILS_INTERNAL_NAME")}: <b>{monitor.hwid[1]}</b>
-                <br />{T.t("SETTINGS_MONITORS_DETAILS_COMMUNICATION")}: {getDebugMonitorType((monitor.type === "ddcci" && monitor.highLevelSupported?.brightness ? "ddcci-hl" : monitor.type))}
-                <br />{T.t("SETTINGS_MONITORS_DETAILS_BRIGHTNESS")}: <b>{(monitor.type == "none" ? T.t("GENERIC_NOT_SUPPORTED") : monitor.brightness)}</b>
-                <br />{T.t("SETTINGS_MONITORS_DETAILS_MAX_BRIGHTNESS")}: <b>{(monitor.type !== "ddcci" ? T.t("GENERIC_NOT_SUPPORTED") : monitor.brightnessMax)}</b>
-                <br />{T.t("SETTINGS_MONITORS_DETAILS_BRIGHTNESS_NORMALIZATION")}: <b>{(monitor.type == "none" ? T.t("GENERIC_NOT_SUPPORTED") : monitor.min + " - " + monitor.max)}</b>
+                <br />{T.t("SETTINGS_MONITORS_DETAILS_COMMUNICATION")}: {getDebugMonitorType((isDimmable ? "dimming" : monitor.type === "ddcci" && monitor.highLevelSupported?.brightness ? "ddcci-hl" : monitor.type))}
+                <br />{T.t("SETTINGS_MONITORS_DETAILS_BRIGHTNESS")}: <b>{(monitor.type == "none" && !isDimmable ? T.t("GENERIC_NOT_SUPPORTED") : monitor.brightness)}</b>
+                <br />{T.t("SETTINGS_MONITORS_DETAILS_MAX_BRIGHTNESS")}: <b>{(isDimmable ? 100 : monitor.type !== "ddcci" ? T.t("GENERIC_NOT_SUPPORTED") : monitor.brightnessMax)}</b>
+                <br />{T.t("SETTINGS_MONITORS_DETAILS_BRIGHTNESS_NORMALIZATION")}: <b>{(monitor.type == "none" && !isDimmable ? T.t("GENERIC_NOT_SUPPORTED") : monitor.min + " - " + monitor.max)}</b>
                 <br />{T.t("SETTINGS_MONITORS_DETAILS_HDR")}: <b>{(monitor.hdr == "active" ? T.t("GENERIC_ACTIVE") : monitor.hdr == "supported" ? T.t("GENERIC_SUPPORTED") : T.t("GENERIC_UNSUPPORTED"))}</b>
             </p>
             {extraHTML}
@@ -128,9 +129,19 @@ function setSDRBrightness(monitor, value) {
     }))
 }
 
+function canUseDimming(monitor) {
+    if (!window.settings?.enableDimming || !monitor?.bounds) return false
+    const dimmingSetting = window.settings?.dimmingDisplays?.[monitor.key]
+    if (dimmingSetting === true) return true
+    if (dimmingSetting === false) return false
+    return monitor?.type == "none"
+}
+
 function getDebugMonitorType(type) {
     if (type == "none") {
         return (<><b>None</b> <span className="icon red vfix">&#xEB90;</span></>)
+    } else if (type == "dimming") {
+        return (<><b>Dimming overlay</b> <span className="icon green vfix">&#xE73D;</span></>)
     } else if (type == "ddcci") {
         return (<><b>DDC/CI</b> <span className="icon green vfix">&#xE73D;</span></>)
     } else if (type == "ddcci-hl") {

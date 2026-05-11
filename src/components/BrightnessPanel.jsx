@@ -14,18 +14,26 @@ const BrightnessPanel = memo(function BrightnessPanel() {
     update: false,
     sleeping: false,
     updateProgress: 0,
-    isRefreshing: window.isRefreshing
+    isRefreshing: window.isRefreshing,
+    twinkleTrayDisabledDueToMonitorChange: (window.settings?.disableOnMonitorChange && window.settings?.twinkleTrayDisabledDueToMonitorChange) || false
   })
   const [doBackgroundEvent, setDoBackgroundEvent] = useState(false)
   const [levelsChanged, setLevelsChanged] = useState(false)
   const [init, setInit] = useState(false)
   const [lastLevels, setLastLevels] = useState([])
   const [T] = useState(new TranslateReact({}, {}))
+  const canUseDimming = (monitor) => {
+    if (!window.settings?.enableDimming || !monitor?.bounds) return false
+    const dimmingSetting = window.settings?.dimmingDisplays?.[monitor.key]
+    if (dimmingSetting === true) return true
+    if (dimmingSetting === false) return false
+    return monitor?.type == "none"
+  }
 
   const numMonitors = useMemo(() => {
     let localNumMonitors = 0
     for (let key in state.monitors) {
-      if ((state.monitors[key].type != "none" || state.monitors[key].hdr === "active") && !(window.settings?.hideDisplays?.[key] === true)) localNumMonitors++;
+      if ((state.monitors[key].type != "none" || state.monitors[key].hdr === "active" || canUseDimming(state.monitors[key])) && !(window.settings?.hideDisplays?.[key] === true)) localNumMonitors++;
     }
     return localNumMonitors
   }, [state.monitors])
@@ -111,12 +119,14 @@ const BrightnessPanel = memo(function BrightnessPanel() {
     const updateInterval = (settings.updateInterval || 500) * 1
     const remaps = (settings.remaps || {})
     const names = (settings.names || {})
+    const twinkleTrayDisabledDueToMonitorChange = (settings.disableOnMonitorChange && settings.twinkleTrayDisabledDueToMonitorChange) || false
     setLevelsChanged(true)
     setState(prev => ({
       ...prev,
       linkedLevelsActive,
       remaps,
       names,
+      twinkleTrayDisabledDueToMonitorChange,
       updateInterval,
       sleepAction
     }))
@@ -144,7 +154,7 @@ const BrightnessPanel = memo(function BrightnessPanel() {
       setLevelsChanged(false)
       try {
         for (let idx in monitors) {
-          if (monitors[idx].type != "none" && monitors[idx].brightness != lastLevels[idx]) {
+          if ((monitors[idx].type != "none" || canUseDimming(monitors[idx])) && monitors[idx].brightness != lastLevels[idx]) {
             window.updateBrightness(monitors[idx].id, monitors[idx].brightness)
           }
         }
@@ -208,6 +218,9 @@ const BrightnessPanel = memo(function BrightnessPanel() {
   })
 
   const getMonitors = () => {
+    if (state.twinkleTrayDisabledDueToMonitorChange) {
+      return (<div className="no-displays-message">Change detected. Open Settings and press Refresh to re-enable Twinkle Tray.</div>)
+    }
     if (!state.monitors || numMonitors == 0) {
       if (state.isRefreshing) {
         return (<div className="no-displays-message" style={{ textAlign: "center", paddingBottom: "15px" }}>{T.t("GENERIC_DETECTING_DISPLAYS")}</div>)
@@ -219,7 +232,7 @@ const BrightnessPanel = memo(function BrightnessPanel() {
         let lastValidMonitor
         for(const key in state.monitors) {
           const monitor = state.monitors[key]
-          if(monitor.type == "wmi" || monitor.type == "studio-display" || (monitor.type == "ddcci" && monitor.brightnessType) || monitor.hdr === "active") {
+          if(canUseDimming(monitor) || monitor.type == "wmi" || monitor.type == "studio-display" || (monitor.type == "ddcci" && monitor.brightnessType) || monitor.hdr === "active") {
            lastValidMonitor = monitor 
           }
         }
@@ -259,9 +272,16 @@ const BrightnessPanel = memo(function BrightnessPanel() {
         }
 
         return sorted.map((monitor) => {
-          if ((monitor.type == "none" && monitor.hdr !== "active") || window.settings?.hideDisplays?.[monitor.key] === true) {
+          if ((monitor.type == "none" && monitor.hdr !== "active" && !canUseDimming(monitor)) || window.settings?.hideDisplays?.[monitor.key] === true) {
             return (<div key={monitor.key}></div>)
           } else {
+            if (canUseDimming(monitor)) {
+              return (
+                <div className="monitor-sliders" key={monitor.key}>
+                  <Slider name={getMonitorName(monitor, state.names)} id={monitor.id} level={monitor.brightness} min={0} max={100} num={monitor.num} monitortype={monitor.type} hwid={monitor.key} key={monitor.key} onChange={handleChange} scrollAmount={window.settings?.scrollFlyoutAmount} />
+                </div>
+              )
+            }
             if (monitor.type == "wmi" || monitor.type == "studio-display" || (monitor.type == "ddcci" && monitor.brightnessType) || monitor.hdr === "active") {
 
               let hasFeatures = true

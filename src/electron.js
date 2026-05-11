@@ -397,39 +397,6 @@ function willPauseMouseEvents(time = 10000) {
     willPauseMouseEventsTimeout = null
   }, time)
 }
-
-
-
-
-// Analytics
-let analyticsInterval = false
-let analyticsFrequency = 1000 * 60 * 29 // 29 minutes
-let lastAnalyticsPing = 0
-
-function pingAnalytics() {
-  // Skip if too recent
-  if (Date.now() < lastAnalyticsPing + (1000 * 60 * 28)) return false;
-
-  const analytics = require('ga4-mp').createClient("Y1YTliQdTL-moveI0z1TLA", "G-BQ22ZK4BPY", settings.uuid)
-  console.log("\x1b[34mAnalytics:\x1b[0m sending with UUID " + settings.uuid)
-
-  let events = []
-  events.push({
-    name: "page_view",
-    params: {
-      page_location: app.name + "/" + "v" + appVersion + "/" + (appBuild ? appBuild : ""),
-      page_title: app.name + "/" + "v" + appVersion,
-      page_referrer: app.name,
-      os_version: require("os").release(),
-      app_type: app.name,
-      app_version: appVersion,
-      engagement_time_msec: 1
-    }
-  })
-  analytics.send(events)
-  lastAnalyticsPing = Date.now()
-}
-
 let monitors = {}
 let mainWindow;
 let tray = null
@@ -482,6 +449,12 @@ const defaultSettings = {
   monitorFeatures: {},
   monitorFeaturesSettings: {},
   hideDisplays: {},
+  disableOnMonitorChange: true,
+  twinkleTrayDisabledDueToMonitorChange: false,
+  enableDimming: false,
+  dimmingDisplays: {},
+  dimmingScreenshotDetection: false,
+  ignoreWorkspaceBorders: false,
   hdrDisplays: {},
   sdrAsMainSliderDisplays: {},
   sdrAsMainSlider: false,
@@ -489,7 +462,6 @@ const defaultSettings = {
   dismissedUpdate: '',
   language: "system",
   names: {},
-  analytics: !isDev,
   scrollShortcut: true,
   scrollShortcutAmount: 2,
   scrollFlyoutAmount: 2,
@@ -760,6 +732,32 @@ function writeSettings(newSettings = {}, processAfter = true, sendUpdate = true)
   if (processAfter) processSettings(newSettings, sendUpdate);
 }
 
+function isTwinkleTrayDisabled() {
+  return settings.disableOnMonitorChange && settings.twinkleTrayDisabledDueToMonitorChange
+}
+
+function disableTwinkleTrayForMonitorChange(reason = "monitor-change") {
+  if (!settings.disableOnMonitorChange || settings.twinkleTrayDisabledDueToMonitorChange) return false
+  console.log(`Disabling Twinkle Tray due to display configuration change: ${reason}`)
+  settings.twinkleTrayDisabledDueToMonitorChange = true
+  destroyDimmingOverlays()
+  try {
+    hotkeyOverlayHide(true)
+    showPanel(false)
+  } catch (e) { }
+  writeSettings({ twinkleTrayDisabledDueToMonitorChange: true }, true, true)
+  return true
+}
+
+function resumeTwinkleTrayAfterMonitorChange() {
+  settings.twinkleTrayDisabledDueToMonitorChange = false
+  writeSettings({ twinkleTrayDisabledDueToMonitorChange: false }, true, true)
+  return refreshMonitors(true, true).then(() => {
+    updateDimmingOverlays()
+    sendToAllWindows('monitors-updated', monitors)
+  })
+}
+
 
 function processSettings(newSettings = {}, sendUpdate = true) {
 
@@ -849,6 +847,31 @@ function processSettings(newSettings = {}, sendUpdate = true) {
       doRestartPanel = true
     }
 
+    if (newSettings.twinkleTrayDisabledDueToMonitorChange !== undefined) {
+      if (settings.twinkleTrayDisabledDueToMonitorChange) {
+        destroyDimmingOverlays()
+      } else {
+        updateDimmingOverlays()
+      }
+      applyHotkeys()
+      sendToAllWindows('monitors-updated', monitors)
+    }
+
+    if (newSettings.disableOnMonitorChange !== undefined && !settings.disableOnMonitorChange) {
+      applyHotkeys()
+      updateDimmingOverlays()
+      sendToAllWindows('monitors-updated', monitors)
+    }
+
+    if (newSettings.enableDimming !== undefined || newSettings.dimmingDisplays !== undefined || newSettings.ignoreWorkspaceBorders !== undefined) {
+      if (settings.enableDimming) {
+        updateDimmingOverlays()
+      } else {
+        destroyDimmingOverlays()
+      }
+      sendToAllWindows('monitors-updated', monitors)
+    }
+
     if (newSettings.detectIdleTimeEnabled === true || newSettings.detectIdleTimeEnabled === false) {
       rebuildTray = true
     }
@@ -908,19 +931,6 @@ function processSettings(newSettings = {}, sendUpdate = true) {
       lastCheck = false
       settings.dismissedUpdate = false
       checkForUpdates()
-    }
-
-    if (settings.analytics) {
-      pingAnalytics()
-      if (analyticsInterval) {
-        clearInterval(analyticsInterval)
-      }
-      analyticsInterval = setInterval(pingAnalytics, analyticsFrequency)
-    } else {
-      analytics = false
-      if (analyticsInterval) {
-        clearInterval(analyticsInterval)
-      }
     }
 
     if (rebuildTray) {
@@ -1053,6 +1063,7 @@ function getKnownDisplays(useCurrentMonitors) {
 
 // Look up all known displays and re-apply last brightness
 function setKnownBrightness(useCurrentMonitors = false, useTransition = false, transitionSpeed = 1) {
+  if (isTwinkleTrayDisabled()) return false
 
   console.log(`\x1b[36mSetting brightness for known displays\x1b[0m`, useCurrentMonitors, useTransition, transitionSpeed)
 
@@ -1061,6 +1072,7 @@ function setKnownBrightness(useCurrentMonitors = false, useTransition = false, t
 }
 
 function applyProfile(profile = {}, useTransition = false, transitionSpeed = 1, skipBadDisplays = false) {
+  if (isTwinkleTrayDisabled()) return false
 
   applyOrder(profile)
   applyRemaps(profile)
@@ -1084,9 +1096,9 @@ function applyProfile(profile = {}, useTransition = false, transitionSpeed = 1, 
         if(shouldSkipDisplay(monitor)) continue;
 
         // Apply brightness to valid display types
-        if (monitor.type == "wmi" || monitor.type == "studio-display" || (monitor.type == "ddcci" && monitor.brightnessType)) {
+        if (monitorSupportsDimming(monitor) || monitor.type == "wmi" || monitor.type == "studio-display" || (monitor.type == "ddcci" && monitor.brightnessType)) {
           // Replace DDC/CI brightness with SDR
-          if(settings.sdrAsMainSliderDisplays?.[monitor.key] && monitor.hdr === "active") {
+          if(!monitorSupportsDimming(monitor) && settings.sdrAsMainSliderDisplays?.[monitor.key] && monitor.hdr === "active") {
             monitor.brightness = monitor.sdrLevel
           }
           updateBrightness(monitor.id, monitor.brightness)
@@ -1101,6 +1113,10 @@ function applyProfile(profile = {}, useTransition = false, transitionSpeed = 1, 
 
 function applyHotkeys(monitorList = monitors) {
   try {
+    if (isTwinkleTrayDisabled()) {
+      globalShortcut.unregisterAll()
+      return false
+    }
     if (settings.hotkeys !== undefined && settings.hotkeys?.length) {
       globalShortcut.unregisterAll()
       for (const hotkey of settings.hotkeys) {
@@ -1128,6 +1144,7 @@ let hotkeyThrottle = []
 let doingHotkey = false
 const hotkeyCycleIndexes = []
 async function doHotkey(hotkey) {
+  if (isTwinkleTrayDisabled()) return false
   const now = Date.now()
   if (!doingHotkey && (hotkeyThrottle[hotkey.id] === undefined || now > hotkeyThrottle[hotkey.id] + 100)) {
 
@@ -1325,7 +1342,7 @@ async function hotkeyOverlayShow() {
   panelState = "overlay"
   let monitorCount = 0
   Object.values(monitors).forEach((monitor) => {
-    if ((monitor.type === "ddcci" || monitor.type === "studio-display" || monitor.type === "wmi") && (settings?.hideDisplays?.[monitor.key] !== true)) monitorCount++;
+    if ((monitor.type === "ddcci" || monitor.type === "studio-display" || monitor.type === "wmi" || monitorSupportsDimming(monitor)) && (settings?.hideDisplays?.[monitor.key] !== true)) monitorCount++;
   })
 
   if (monitorCount && settings.linkedLevelsActive) {
@@ -1892,12 +1909,17 @@ async function refreshMonitors(fullRefresh = false, bypassRateLimit = false) {
     // Normalize values
     for (let id in newMonitors) {
       const monitor = newMonitors[id]
+      const oldMonitor = oldMonitors[id]
+      if (monitorSupportsDimming(monitor) && oldMonitor?.brightness !== undefined) {
+        monitor.brightness = oldMonitor.brightness
+        monitor.brightnessRaw = oldMonitor.brightnessRaw ?? oldMonitor.brightness
+      }
       // Brightness
       monitor.brightness = normalizeBrightness(monitor.brightness, true, monitor.min, monitor.max, monitor.calibration)
 
 
       // Replace DDC/CI brightness with SDR
-      if(settings.sdrAsMainSliderDisplays?.[monitor.key] && monitor.hdr === "active") {
+      if(!monitorSupportsDimming(monitor) && settings.sdrAsMainSliderDisplays?.[monitor.key] && monitor.hdr === "active") {
         monitor.brightness = monitor.sdrLevel
       }
 
@@ -1915,6 +1937,7 @@ async function refreshMonitors(fullRefresh = false, bypassRateLimit = false) {
     }
 
     monitors = newMonitors;
+    updateDimmingOverlays()
 
     // Only send update if something changed
     if (JSON.stringify(newMonitors) !== JSON.stringify(oldMonitors)) {
@@ -1955,6 +1978,188 @@ function pauseMonitorUpdates() {
 let updateBrightnessTimeout = false
 let updateBrightnessQueue = []
 let lastBrightnessTimes = []
+const dimmingOverlays = {}
+const maxDimmingOpacity = 0.85
+
+function monitorSupportsDimming(monitor) {
+  if (isTwinkleTrayDisabled()) return false
+  if (!settings.enableDimming || !monitor?.bounds || settings.hideDisplays?.[monitor.key] === true) return false
+  const dimmingSetting = settings.dimmingDisplays?.[monitor.key]
+  if (dimmingSetting === true) return true
+  if (dimmingSetting === false) return false
+  return monitor?.type === "none"
+}
+
+function getDisplayBoundsForMonitor(monitor) {
+  const displays = screen.getAllDisplays()
+  const bounds = monitor?.bounds
+  const candidates = []
+
+  if (bounds) {
+    candidates.push(bounds)
+    candidates.push({
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height
+    })
+    candidates.push({
+      x: bounds.position?.x,
+      y: bounds.position?.y,
+      width: bounds.size?.width ?? bounds.width,
+      height: bounds.size?.height ?? bounds.height
+    })
+  }
+
+  for (const candidate of candidates) {
+    if ([candidate?.x, candidate?.y, candidate?.width, candidate?.height].every(value => typeof value === "number")) {
+      const display = displays.find(display => {
+        const displayBounds = display.bounds
+        return Math.abs(displayBounds.x - candidate.x) <= 2 &&
+          Math.abs(displayBounds.y - candidate.y) <= 2 &&
+          Math.abs(displayBounds.width - candidate.width) <= 2 &&
+          Math.abs(displayBounds.height - candidate.height) <= 2
+      })
+      if (display) return settings.ignoreWorkspaceBorders ? display.workArea : display.bounds
+    }
+  }
+
+  const display = displays[monitor?.num] ?? screen.getPrimaryDisplay()
+  return settings.ignoreWorkspaceBorders ? display.workArea : display.bounds
+}
+
+function destroyDimmingOverlays() {
+  for (const key in dimmingOverlays) {
+    try {
+      if (!dimmingOverlays[key].isDestroyed()) dimmingOverlays[key].destroy()
+    } catch (e) { }
+    delete dimmingOverlays[key]
+  }
+}
+
+function hideDimmingOverlays() {
+  for (const key in dimmingOverlays) {
+    try {
+      if (!dimmingOverlays[key].isDestroyed()) dimmingOverlays[key].hide()
+    } catch (e) { }
+  }
+}
+
+function getShareXPath() {
+  const candidates = [
+    path.join(process.env.LOCALAPPDATA || "", "Programs", "ShareX", "ShareX.exe"),
+    path.join(process.env.PROGRAMFILES || "", "ShareX", "ShareX.exe"),
+    path.join(process.env["PROGRAMFILES(X86)"] || "", "ShareX", "ShareX.exe")
+  ]
+  return candidates.find(candidate => candidate && fs.existsSync(candidate)) || "ShareX.exe"
+}
+
+let dimmingScreenshotTimeout = false
+function runDimmingScreenshotDetection() {
+  if (!settings.enableDimming || !settings.dimmingScreenshotDetection) return false
+
+  const hasDimmingOverlays = Object.values(monitors).some(monitor => monitorSupportsDimming(monitor))
+  if (!hasDimmingOverlays) return false
+
+  if (dimmingScreenshotTimeout) clearTimeout(dimmingScreenshotTimeout)
+  hideDimmingOverlays()
+
+  try {
+    const shareXPath = getShareXPath()
+    const shareX = require("child_process").spawn(shareXPath, ["-PrintScreen"], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true
+    })
+    shareX.unref()
+  } catch (e) {
+    console.log("Couldn't launch ShareX screenshot action", e)
+  }
+
+  dimmingScreenshotTimeout = setTimeout(() => {
+    updateDimmingOverlays()
+    dimmingScreenshotTimeout = false
+  }, 2000)
+  return true
+}
+
+function updateDimmingOverlay(monitor, level) {
+  if (!monitorSupportsDimming(monitor)) return false
+
+  const opacity = Math.max(0, Math.min(maxDimmingOpacity, (100 - level) / 100 * maxDimmingOpacity))
+  const existing = dimmingOverlays[monitor.key]
+
+  if (opacity <= 0) {
+    if (existing && !existing.isDestroyed()) existing.hide()
+    return true
+  }
+
+  const bounds = getDisplayBoundsForMonitor(monitor)
+  let overlay = existing
+
+  if (!overlay || overlay.isDestroyed()) {
+    overlay = new BrowserWindow({
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      frame: false,
+      transparent: false,
+      backgroundColor: "#000000",
+      hasShadow: false,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      closable: false,
+      fullscreenable: false,
+      focusable: false,
+      skipTaskbar: true,
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    })
+    overlay.setMenu(null)
+    overlay.setIgnoreMouseEvents(true, { forward: true })
+    overlay.loadURL("data:text/html;charset=utf-8,<html><body style='margin:0;background:%23000;overflow:hidden;'></body></html>")
+    dimmingOverlays[monitor.key] = overlay
+  }
+
+  overlay.setBounds(bounds)
+  overlay.setOpacity(opacity)
+  overlay.setAlwaysOnTop(true, "screen-saver")
+  overlay.showInactive()
+  overlay.setIgnoreMouseEvents(true, { forward: true })
+  return true
+}
+
+function updateDimmingOverlays() {
+  if (!settings.enableDimming || isTwinkleTrayDisabled()) {
+    destroyDimmingOverlays()
+    return false
+  }
+
+  const activeKeys = []
+  for (const key in monitors) {
+    const monitor = monitors[key]
+    if (monitorSupportsDimming(monitor)) {
+      activeKeys.push(monitor.key)
+      updateDimmingOverlay(monitor, monitor.brightness ?? 100)
+    }
+  }
+
+  for (const key in dimmingOverlays) {
+    if (activeKeys.indexOf(key) === -1) {
+      try {
+        if (!dimmingOverlays[key].isDestroyed()) dimmingOverlays[key].destroy()
+      } catch(e) { }
+      delete dimmingOverlays[key]
+    }
+  }
+}
+
 function updateBrightnessThrottle(id, level, useCap = true, sendUpdate = true, vcp = "brightness") {
   let idx = updateBrightnessQueue.length
   const found = updateBrightnessQueue.findIndex(item => item.id === id)
@@ -1995,6 +2200,7 @@ function updateBrightnessThrottle(id, level, useCap = true, sendUpdate = true, v
 let ignoreBrightnessEvent = false
 let ignoreBrightnessEventTimeout = false
 function updateBrightness(index, newLevel, useCap = true, vcpValue = "brightness", clearTransition = true) {
+  if (isTwinkleTrayDisabled()) return false;
   if(isWindowsUserIdle) return false; // Skip if displays are off
   try {
     let level = newLevel
@@ -2028,11 +2234,6 @@ function updateBrightness(index, newLevel, useCap = true, vcpValue = "brightness
     }
     
 
-    if(vcp == "brightness" && monitor.hdr === "active" && settings.sdrAsMainSliderDisplays?.[monitor.key]) {
-      vcp = "sdr"
-      useCap = false
-    }
-
     if (clearTransition && currentTransition) {
       clearInterval(currentTransition)
       currentTransition = null
@@ -2044,6 +2245,18 @@ function updateBrightness(index, newLevel, useCap = true, vcpValue = "brightness
     }
 
     const normalized = normalizeBrightness(level, false, (useCap ? monitor.min : 0), (useCap ? monitor.max : 100), (useCap ? monitor.calibration : []))
+
+    if (monitorSupportsDimming(monitor) && vcp === "brightness") {
+      monitor.brightness = level
+      monitor.brightnessRaw = normalized
+      updateDimmingOverlay(monitor, level)
+      setTrayPercent()
+      updateKnownDisplays()
+      return true
+    } else if(vcp == "brightness" && monitor.hdr === "active" && settings.sdrAsMainSliderDisplays?.[monitor.key]) {
+      vcp = "sdr"
+      useCap = false
+    }
 
     if (vcp === "sdr") {
       monitorsThread.send({
@@ -2148,13 +2361,14 @@ function updateBrightness(index, newLevel, useCap = true, vcpValue = "brightness
 
 
 function updateAllBrightness(brightness, mode = "offset") {
+  if (isTwinkleTrayDisabled()) return false
 
   let linkedLevelVal
 
   // Update internal brightness values
   for (let key in monitors) {
     const monitor = monitors[key]
-    if (monitor.type !== "none") {
+    if (monitor.type !== "none" || monitorSupportsDimming(monitor)) {
 
       // Replace DDC/CI brightness with SDR
       if(settings.sdrAsMainSliderDisplays?.[monitor.key] && monitor.hdr === "active") {
@@ -2174,7 +2388,7 @@ function updateAllBrightness(brightness, mode = "offset") {
       }
 
       monitors[key].brightness = normalizedAdjust
-      if(settings.sdrAsMainSliderDisplays?.[monitor.key]) monitors[key].sdrLevel = normalizedAdjust;
+      if(!monitorSupportsDimming(monitor) && settings.sdrAsMainSliderDisplays?.[monitor.key]) monitors[key].sdrLevel = normalizedAdjust;
     }
   }
 
@@ -2397,7 +2611,8 @@ ipcMain.on('request-monitors', function (event, arg) {
 })
 
 ipcMain.on('full-refresh', function (event, forceUpdate = false) {
-  refreshMonitors(true).then(() => {
+  const refreshPromise = isTwinkleTrayDisabled() ? resumeTwinkleTrayAfterMonitorChange() : refreshMonitors(true)
+  refreshPromise.then(() => {
     if (forceUpdate) {
       sendToAllWindows('monitors-updated', monitors)
     }
@@ -3293,6 +3508,7 @@ app.on("activate", () => {
 });
 
 app.on('quit', () => {
+  destroyDimmingOverlays()
   try {
     tray.destroy()
   } catch (e) {
@@ -3315,7 +3531,23 @@ function createTray() {
   tray = new Tray(getTrayIconPath())
   tray.setToolTip('Twinkle Tray' + (isDev ? " (Dev)" : ""))
   setTrayMenu()
-  tray.on("click", async () => toggleTray(true))
+  let trayClickTimeout = false
+  tray.on("click", async () => {
+    if (trayClickTimeout) clearTimeout(trayClickTimeout)
+    trayClickTimeout = setTimeout(async () => {
+      trayClickTimeout = false
+      await toggleTray(true)
+    }, 250)
+  })
+  tray.on("double-click", async () => {
+    if (trayClickTimeout) {
+      clearTimeout(trayClickTimeout)
+      trayClickTimeout = false
+    }
+    if (!runDimmingScreenshotDetection()) {
+      await toggleTray(true)
+    }
+  })
 
   let lastMouseMove = Date.now()
   tray.on('mouse-move', async () => {
@@ -3948,6 +4180,8 @@ function handleMonitorChange(t, e, d) {
 
   console.log("Hardware change detected.")
 
+  if (disableTwinkleTrayForMonitorChange(t)) return false
+
   const block = blockBadDisplays("handleMonitorChange")
 
   // Defer actions for a moment just in case of repeat events
@@ -4021,6 +4255,8 @@ powerMonitor.on("resume", () => {
 
 function handleMetricsChange(type) {
   console.log(`Event: handleMetricsChange (${type})`);
+
+  if (disableTwinkleTrayForMonitorChange(type)) return false
 
   const block = blockBadDisplays("handleMetricsChange")
 

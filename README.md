@@ -7,6 +7,19 @@
 
 Twinkle Tray enables brightness control on external displays in Windows 10 & 11. Even though Windows is capable of adjusting the backlight on most monitors, it doesn't support external monitors natively. Windows also lacks any options to manage the brightness of multiple displays. This app inserts a new icon into your system tray, where you can click to have instant access to the brightness levels of all compatible displays. 
 
+## Fork additions
+
+This fork adds experimental dimming support for displays that Twinkle Tray cannot control through DDC/CI, WMI, HDR SDR brightness, or other native methods.
+
+- Adds a **Dimming** settings tab.
+- Adds an **Enable dimming** option that shows otherwise unsupported active monitors in the tray brightness flyout.
+- Simulates brightness changes on unsupported monitors with a black, click-through overlay on that display.
+- Preserves each dimmed monitor's simulated brightness across monitor refreshes.
+- Adds **Ignore workspace borders**, which limits the overlay to the usable desktop workspace so areas such as the taskbar remain uncovered and clickable.
+- Updates Monitor Settings to report dimmable unsupported displays as using a **Dimming overlay** communication method.
+
+This does not add true hardware brightness control for unsupported monitors. It visually darkens the screen area instead.
+
 <img src="https://raw.githubusercontent.com/xanderfrangos/twinkle-tray/gh-pages/assets/img/tt-screenshot-w11.jpg" alt="Win 10 brightness slider" />
 
 ## Features

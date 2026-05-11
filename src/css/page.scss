@@ -460,6 +460,31 @@ select {
     }
 }
 
+.settings-notice {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 18px;
+    padding: 14px 16px;
+    background: var(--button-background);
+    border: 1px solid var(--window-border);
+    border-radius: 6px;
+
+    .icon {
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    .content-area {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .button {
+        white-space: nowrap;
+    }
+}
+
 .changelog {
     white-space: pre-wrap;
     padding: 10px 20px 20px;
@@ -847,6 +872,19 @@ html body[data-is-win11="true"] {
 
         &:hover {
             background: var(--sidebar-item-hover);
+        }
+
+        &[data-disabled="true"] {
+            opacity: 0.42;
+            cursor: default;
+
+            &:hover {
+                background: transparent;
+            }
+
+            &:before {
+                display: none;
+            }
         }
 
         &:active {}
