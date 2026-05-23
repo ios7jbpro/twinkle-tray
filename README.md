@@ -39,63 +39,21 @@ Twinkle Tray will automatically adjust the look and feel to match your Windows v
 
 ## Download
 
-**Download the lastest version from [twinkletray.com](https://twinkletray.com/) or the [Releases page](https://github.com/xanderfrangos/twinkle-tray/releases).**
-
-<a href="https://www.microsoft.com/store/productId/9PLJWWSV01LK" target="_blank"><img width="156" src="https://crushee.app/assets/img/ms-store.svg" alt="Get Twinkle Tray brightness slider from the Microsoft Store"></a>
-
-## Install via Package Manager
-
-### Windows Package Manager
-
-```powershell
-winget install xanderfrangos.twinkletray
-```
-
-### Chocolatey (unofficial)
-
-[Chocolatey](https://chocolatey.org/) users can download and install Twinkle Tray from Chocolatey's Community Repository by installing the `twinkle-tray` package:
-
-```powershell
-choco install twinkle-tray
-```
-
-To upgrade to the latest approved package version, run the following command:
-
-```powershell
-choco upgrade twinkle-tray
-```
-
-**This package is not maintained at this repository**. Please do not create issues relating to the package here. Instead, go to the [package page](https://community.chocolatey.org/packages/twinkle-tray) and follow the [Package Triage Process](https://docs.chocolatey.org/en-us/community-repository/users/package-triage-process).
-
-### Scoop (unofficial)
-
-[Scoop](https://scoop.sh/) users can download and install Twinkle Tray from Scoop's Extras bucket by installing the `twinkle-tray` package:
-
-```sh
-scoop bucket add extras
-scoop install extras/twinkle-tray
-```
-
-To upgrade to the latest approved package version, run the following command:
-
-```sh
-scoop update twinkle-tray
-```
-
-**This package is not maintained at this repository**. Please do not create issues relating to the package here. Instead, go to [ScoopInstallers/Extras](https://github.com/ScoopInstaller/Extras) and search for an existing [issue](https://github.com/ScoopInstaller/Extras/issues?q=is%3Aissue+twinkle-tray) or [discussion](https://github.com/ScoopInstaller/Extras/discussions?discussions_q=twinkle-tray) and create a new [issue](https://github.com/ScoopInstaller/Extras/issues/new/choose) or [discussion](https://github.com/ScoopInstaller/Extras/discussions/new/choose) if one does not already exist.
+**Download the lastest version from the [Releases page](https://github.com/ios7jbpro/twinkle-tray/releases).**
 
 ## Usage
 
-- Download from the [Releases page](https://github.com/xanderfrangos/twinkle-tray/releases) and run the installer EXE.
+- Download from the [Releases page](https://github.com/ios7jbpro/twinkle-tray/releases) and run the installer EXE.
 - Once installation has finished, you should see the Twinkle Tray icon in your system tray. 
 - Click the icon to bring up the Adjust Brightness flyout. 
 - Click away to hide the flyout.
 - Right-click the system tray icon to quit.
 
 ## Compatibility
-Twinkle Tray uses DDC/CI and WMI to communicate with your monitors. Most monitors offer DDC/CI compatibility, but it may be off by default. Make sure you have the appropriate option(s) enabled on your monitor so that it can work with Twinkle Tray. Refer to your monitor's user manual for more information.
+Twinkle Tray uses DDC/CI and WMI to communicate with your monitors. Most monitors offer DDC/CI compatibility, but it may be off by default. Make sure you have the appropriate option(s) enabled on your monitor so that it can work with Twinkle Tray. Refer to your monitor's user manual for more information. This fork adds experimental dimming support for displays that Twinkle Tray cannot control through DDC/CI, WMI, HDR SDR brightness, or other native methods. If your monitor seems unsupported, it will fall back to the black overlay.
 
 **Known issues:**
+- Taskbar cannot be interacted on monitors with black overlay. To fix this, turn on **Ignore workspace borders**.
 - The AMD Radeon Control Panel can interfere with Twinkle Tray. Ensure "Custom Colors" is not enabled.
 - VGA/DVI may not be compatible.
 - USB/Thunderbolt/Surface docks with HDMI or DisplayPort may not be compatible. 
@@ -143,7 +101,7 @@ If you wish to run a development build of Twinkly Tray:
 
 ## Special Thanks
 
-Twinkle Tray was built using frameworks & libraries such as [Electron](https://electronjs.org/), [Node.js](https://nodejs.org/), [node-ddcci](https://github.com/hensm/node-ddcci), and [win32-displayconfig](<https://github.com/djsweet/win32-displayconfig>). Thanks to Weblate for allowing free use of their service, along with the many contributors to the localizations of Twinkle Tray. The app would not be nearly as popular without all of your help. And thank you for the many donations, small and large, over the years. 
+Twinkle Tray(this fork) was built using OpenAI Codex and Claude Code and frameworks & libraries such as [Electron](https://electronjs.org/), [Node.js](https://nodejs.org/), [node-ddcci](https://github.com/hensm/node-ddcci), and [win32-displayconfig](<https://github.com/djsweet/win32-displayconfig>). Thanks to Weblate for allowing free use of their service, along with the many contributors to the localizations of Twinkle Tray. The app would not be nearly as popular without all of your help. And thank you for the many donations, small and large, over the years. 
 
 ## License
 
