@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/xanderfrangos/twinkle-tray/master/src/assets/logo.png" width="128px" height="128px" alt="Twinkle Tray brightness slider logo">
+  <img src="https://raw.githubusercontent.com/ios7jbpro/twinkle-tray/master/src/assets/logo.png" width="128px" height="128px" alt="Twinkle Tray brightness slider logo">
 </p>
 <h1 align="center">Twinkle Tray</h1>
 
-<p align="center"><a href="https://github.com/xanderfrangos/twinkle-tray/releases" target="_blank"><img src="https://img.shields.io/github/v/release/xanderfrangos/twinkle-tray" alt="Latest release" /></a> <a href="https://github.com/xanderfrangos/twinkle-tray/releases" target="_blank"><img src="https://img.shields.io/github/downloads/xanderfrangos/twinkle-tray/total" alt="Total downloads" /></a> <a href="https://hosted.weblate.org/projects/twinkle-tray/twinkle-tray/" target="_blank"><img src="https://hosted.weblate.org/widgets/twinkle-tray/-/twinkle-tray/svg-badge.svg" alt="Translations" /></a></p>
+<p align="center"><a href="https://github.com/ios7jbpro/twinkle-tray/releases" target="_blank"><img src="https://img.shields.io/github/v/release/ios7jbpro/twinkle-tray" alt="Latest release" /></a> <a href="https://github.com/ios7jbpro/twinkle-tray/releases" target="_blank"><img src="https://img.shields.io/github/downloads/ios7jbpro/twinkle-tray/total" alt="Total downloads" /></a>
 
 Twinkle Tray enables brightness control on external displays in Windows 10 & 11. Even though Windows is capable of adjusting the backlight on most monitors, it doesn't support external monitors natively. Windows also lacks any options to manage the brightness of multiple displays. This app inserts a new icon into your system tray, where you can click to have instant access to the brightness levels of all compatible displays. 
 
