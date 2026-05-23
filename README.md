@@ -18,7 +18,7 @@ This fork adds experimental dimming support for displays that Twinkle Tray canno
 
 This does not add true hardware brightness control for unsupported monitors. It visually darkens the screen area instead.
 
-<img src="https://raw.githubusercontent.com/xanderfrangos/twinkle-tray/gh-pages/assets/img/tt-screenshot-w11.jpg" alt="Win 10 brightness slider" />
+<img src="https://raw.githubusercontent.com/ios7jbpro/twinkle-tray/master/images/preview.png" alt="Preview" />
 
 ## Features
 - Adds brightness sliders to the system tray, similar to the built-in Windows volume flyout.
