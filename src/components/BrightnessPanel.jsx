@@ -11,9 +11,7 @@ const BrightnessPanel = memo(function BrightnessPanel() {
     monitors: [],
     linkedLevelsActive: false,
     names: {},
-    update: false,
     sleeping: false,
-    updateProgress: 0,
     isRefreshing: window.isRefreshing,
     twinkleTrayDisabledDueToMonitorChange: (window.settings?.disableOnMonitorChange && window.settings?.twinkleTrayDisabledDueToMonitorChange) || false
   })
@@ -135,11 +133,6 @@ const BrightnessPanel = memo(function BrightnessPanel() {
     setDoBackgroundEvent(true)
   }
 
-  const recievedUpdate = (e) => {
-    const update = e.detail
-    setState(prev => ({ ...prev, update }))
-  }
-
   const recievedSleep = (e) => {
     setState(prev => ({ ...prev, sleeping: e.detail }))
   }
@@ -170,7 +163,6 @@ const BrightnessPanel = memo(function BrightnessPanel() {
   }
 
   const handleIsRefreshingUpdate = (e) => setState(prev => ({ ...prev, isRefreshing: e.detail }))
-  const handleUpdateProgress = (e) => setState(prev => ({ ...prev, updateProgress: e.detail.progress }))
 
   useEffect(() => {
     resetBrightnessInterval()
@@ -184,13 +176,8 @@ const BrightnessPanel = memo(function BrightnessPanel() {
     window.addEventListener("monitorsUpdated", (e) => recievedMonitors(e))
     window.addEventListener("settingsUpdated", (e) => recievedSettings(e))
     window.addEventListener("localizationUpdated", (e) => T.setLocalizationData(e.detail.desired, e.detail.default))
-    window.addEventListener("updateUpdated", (e) => recievedUpdate(e))
     window.addEventListener("sleepUpdated", (e) => recievedSleep(e))
     window.addEventListener("isRefreshing", (e) => handleIsRefreshingUpdate(e))
-
-    if (window.isAppX === false) {
-      window.addEventListener("updateProgress", (e) => handleUpdateProgress(e))
-    }
 
     // Update brightness every interval, if changed
     window.requestSettings()
@@ -202,10 +189,8 @@ const BrightnessPanel = memo(function BrightnessPanel() {
       window.removeEventListener("monitorsUpdated")
       window.removeEventListener("settingsUpdated")
       window.removeEventListener("localizationUpdated")
-      window.removeEventListener("updateUpdated")
       window.removeEventListener("sleepUpdated")
       window.removeEventListener("isRefreshing")
-      window.removeEventListener("updateProgress")
     }
   }, [])
 
@@ -400,38 +385,6 @@ const BrightnessPanel = memo(function BrightnessPanel() {
         </div>
       </div>
       {state.sleeping ? (<div></div>) : getMonitors()}
-      {
-        (state.update && state.update.show)
-          ?
-          <div className="updateBar">
-            <div className="left">
-              {T.t("PANEL_UPDATE_AVAILABLE")}
-              ({state.update.version})
-            </div>
-            <div className="right">
-              <a onClick={window.installUpdate}>
-                {T.t("GENERIC_INSTALL")}
-              </a>
-              <a className="icon" title={T.t("GENERIC_DISMISS")} onClick={window.dismissUpdate}>
-                &#xEF2C;
-              </a>
-            </div>
-          </div>
-          :
-          (state.update && state.update.downloading)
-          &&
-          <div className="updateBar">
-            <div className="left progress">
-              <div className="progress-bar">
-                <div style={{ width: `${state.updateProgress}%` }}>
-                </div>
-              </div>
-            </div>
-            <div className="right">
-              {state.updateProgress}%
-            </div>
-          </div>
-      }
       <div id="mica">
         <div className="displays" style={{ visibility: window.micaState.visibility }}>
           <div className="blur">
